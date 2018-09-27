@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+apt-get update && FROM ubuntu:latest
 
 # Install cron
 RUN apt-get -y install cron
