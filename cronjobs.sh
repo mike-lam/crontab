@@ -1,1 +1,1 @@
-echo "hello from cronjobs.sh" /var/log/cron.log
+echo "hello from cronjobs.sh" >> /var/log/cron.log
