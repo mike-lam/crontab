@@ -1,7 +1,7 @@
-apt-get update && FROM ubuntu:latest
+FROM ubuntu:latest
 
 # Install cron
-RUN apt-get -y install cron
+RUN apt-get update && apt-get -y install cron
 
 COPY cronjobs.sh /usr/local/bin/cronjobs.sh
 
