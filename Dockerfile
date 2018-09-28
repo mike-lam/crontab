@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+FROM docker:latest
 
 # Install cron
 RUN apt-get update && apt-get -y install cron
