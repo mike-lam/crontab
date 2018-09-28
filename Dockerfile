@@ -6,4 +6,4 @@ COPY cronjobs.sh /usr/local/bin/cronjobs.sh
 RUN touch /var/log/cron.log
 
 # Run the command on container startup
-CMD /bin/sh -c /usr/local/bin/cronjobs.sh
+CMD ["/usr/local/bin/cronjobs.sh"]
