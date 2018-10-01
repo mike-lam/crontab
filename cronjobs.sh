@@ -13,7 +13,8 @@ create_backups() {
   done
   }
 
-for (( ; ; )); do
+echo "sleep period is $SLEEP" > /var/log/cron.txt
+while true; do
   create_backups
   cat /var/log/cron.log
   sleep $SLEEP
