@@ -6,15 +6,24 @@ TMPDIR=${TMPDIR:-/tmp}
 FTP_SERVER=${FTP_SERVER:-ubuntu-gitlabstack05}
 FTP_USER=${FTP_USER:-vmadmin}
 FTP_PASSWD=${FTP_PASSWD:-Dc5k20a3}
+SLEEP_INIT=${SLEEP_INIT:-1s}
 SLEEP=${SLEEP:-10m}
+GITLAB_SERVICE_NAME=${GITLAB_SERVICE_NAME:-gitlabstack_gitlab}
 
-backup_gitlab_volume() {
-  echo "DEBUG skip gitlab data for now"
-  #needs special treatment because gitlab has it own backup process
-  
+backup_gitlab_data_volume() {
+  #it is not needed to backup everything in the data volume, gitlab provide a function to perform this
+  gitlab_container_id=$(docker ps -f name=$GITLAB_SERVICE_NAME -q)
+  docker exec -t $gitlab_container_id gitlab-rake gitlab:backup:create 2>&1 | tee /var/log/cron.log #the tee is to duplicate the outs to a file for loggin
+  gitlab_data_volume=$DOCKER_ROOT_DIR/volumes/$GITLAB_SERVICE_NAME-data/_data
+  tarfile=$(ls $gitlab_data_volume/backups/*)
+  datelabel=$(date +%Y-%m-%d_%H:%M:%S-%Z)
+  tarfileNew=$TMPDIR/$GITLAB_SERVICE_NAME-data.$datelabel.$(hostname).tar
+  mv  $tarfile $tarfileNew 
+  FTP FROM HERE
+  rm $tarfileNew
 } 
-
-backup_other_volume() {
+ 
+backup_volume() {
   tmpdir=$(mktemp -d $TMPDIR/$volume.XXXXXXXXXX)
   datelabel=$(date +%Y-%m-%d_%H:%M:%S-%Z)
   tarfile=$TMPDIR/$volume.$datelabel.$(hostname).tar
@@ -45,17 +54,18 @@ create_backups() {
   for volume in $(docker volume ls -q); do
     c=$(docker ps --filter volume=$volume -q|wc -l)
     if [ $c -eq  1 ]; then
-      if [ $volume == "gitlabstack_gitlab-config" ] || [ $volume == "gitlabstack_gitlab-data" ] || [ $volume == "gitlabstack_gitlab-log" ]; then
-        backup_gitlab_volume
+      if [ $volume == "$GITLAB_SERVICE_NAME-data" ]; then
+        backup_gitlab_data_volume
       else 
-        backup_other_volume
+        backup_volume
       fi
     fi
   done
 }
 
-while true; do
+sleep $SLEEP_INIT
+#while true; do
   create_backups
   sleep $SLEEP
-done
+#done
 
