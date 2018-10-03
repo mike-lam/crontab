@@ -75,7 +75,7 @@ create_backups() {
 }
 
 delete_old_backups() {
-  find $DOCKER_ROOT_DIR/volumes/$NAMESPACE_ftp/_data/ -mtime +5 
+  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/ -mtime +5 
 }
 
 sleep $SLEEP_INIT  #give other container some lead time to start running
