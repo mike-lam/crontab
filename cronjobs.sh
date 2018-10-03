@@ -1,6 +1,6 @@
 #set -x
-# set in docker file insetad as an ENV var SLEEP=15s  #can be in s, m, h, d
 
+# these variables should be set in docker-compose.yml file as environment variables, however default values are provided here which makes testing easier to do.
 DOCKER_ROOT_DIR=$(docker system info -f '{{.DockerRootDir}}')
 TMPDIR=${TMPDIR:-/tmp}
 FTP_SERVER=${FTP_SERVER:-ubuntu-gitlabstack05}
@@ -8,64 +8,76 @@ FTP_USER=${FTP_USER:-vmadmin}
 FTP_PASSWD=${FTP_PASSWD:-Dc5k20a3}
 SLEEP_INIT=${SLEEP_INIT:-1s}
 SLEEP=${SLEEP:-10m}
-GITLAB_SERVICE_NAME=${GITLAB_SERVICE_NAME:-gitlabstack_gitlab}
+NAMESPACE=${NAMESPACE:-gitlabstack}
+GITLAB_SERVICE_NAME=${GITLAB_SERVICE_NAME:-$NAMESPACE_gitlab}
 
 backup_gitlab_data_volume() {
-  #it is not needed to backup everything in the data volume, gitlab provide a function to perform this
+  #it is not needed to backup everything in the data volume, gitlab provide a function to perform this, so we just ftp what it produces
   gitlab_container_id=$(docker ps -f name=$GITLAB_SERVICE_NAME -q)
-  docker exec -t $gitlab_container_id gitlab-rake gitlab:backup:create 2>&1 | tee /var/log/cron.log #the tee is to duplicate the outs to a file for loggin
+  docker exec -t $gitlab_container_id gitlab-rake gitlab:backup:create 2>&1 | tee -a /var/log/cron.log #the tee is to duplicate the outs to a file for loggin
   gitlab_data_volume=$DOCKER_ROOT_DIR/volumes/$GITLAB_SERVICE_NAME-data/_data
   tarfile=$(ls $gitlab_data_volume/backups/*)
-  datelabel=$(date +%Y-%m-%d_%H:%M:%S-%Z)
+  datelabel=$(date +%Y-%m-%d_%H_%M_%S-%Z)
   tarfileNew=$TMPDIR/$GITLAB_SERVICE_NAME-data.$datelabel.$(hostname).tar
   mv  $tarfile $tarfileNew 
-  FTP FROM HERE
+  copy_file_to_ftp $tarfileNew
   rm $tarfileNew
 } 
  
 backup_volume() {
+  #tar the content of the volume and ftp it
   tmpdir=$(mktemp -d $TMPDIR/$volume.XXXXXXXXXX)
-  datelabel=$(date +%Y-%m-%d_%H:%M:%S-%Z)
+  datelabel=$(date +%Y-%m-%d_%H_%M_%S-%Z)
   tarfile=$TMPDIR/$volume.$datelabel.$(hostname).tar
-  echo "  $tarfile" >> /var/log/cron.log
+  echo "  $tarfile"  2>&1 | tee -a /var/log/cron.log 
   cp -r $DOCKER_ROOT_DIR/volumes/$volume/_data/* $tmpdir      
   tar -czf $tarfile $tmpdir
-  copy_tar_to_ftp $tarfile
+  copy_file_to_ftp $tarfile
   #cleanup
   rm -r $tmpdir      
   rm $tarfile 
 } 
 
-copy_tar_to_ftp() { #tarfile
-  tarfileN=$(basename $1)
-  cd $TMPDIR
+copy_file_to_ftp() { #dir_file_name
+  dirN=$(dirname $1)
+  fileN=$(basename $1)
+  cd $dirN
   ftp -n -v $FTP_SERVER << EOT
   passive
   user $FTP_USER $FTP_PASSWD
-  put $tarfileN
+  put $fileN
   close
 EOT
 }
 
 create_backups() {
-  echo "Started on $(hostname) at $(date)" >> /var/log/cron.log
-  echo "running containers are:" >> /var/log/cron.log
-  echo "$(docker ps --format '{{.Names}}')" >> /var/log/cron.log
+  #find all volumes for all running container in this stack on this node and then make a backup of it on the ftp server (which we assume is on a remote vm for safekeeping)
   for volume in $(docker volume ls -q); do
-    c=$(docker ps --filter volume=$volume -q|wc -l)
-    if [ $c -eq  1 ]; then
-      if [ $volume == "$GITLAB_SERVICE_NAME-data" ]; then
-        backup_gitlab_data_volume
-      else 
-        backup_volume
+    namespace=$(docker volume inspect $volume --format '{{index .Labels "com.docker.stack.namespace"}}')
+    if [ "$namespace" == "$NAMESPACE" ]; then
+      c=$(docker ps --filter volume=$volume -q|wc -l)    
+      if [ $c -eq  1 ]; then
+        if [ $volume == "$GITLAB_SERVICE_NAME-data" ]; then
+          backup_gitlab_data_volume
+        else 
+          backup_volume
+        fi
       fi
     fi
   done
 }
 
-sleep $SLEEP_INIT
-#while true; do
+sleep $SLEEP_INIT  #give other container some lead time to start running
+while true; do  #loop infinitely to produce backups every $SLEEP time
+  touch /var/log/cron.log
+  echo "Started on $(hostname) at $(date)"  2>&1 | tee -a /var/log/cron.log
   create_backups
+  datelabel=$(date +%Y-%m-%d_%H_%M_%S-%Z)
+  cronfileN=/var/log/cron.$datelabel.$(hostname).log
+  echo "DONE with backups at $(date)!"  2>&1 | tee -a /var/log/cron.log  #althought the backups are truly done when the ftp of the log is done, we need to log before we ftp or lose the echo
+  mv /var/log/cron.log $cronfileN  
+  copy_file_to_ftp $cronfileN
+  rm $cronfileN
   sleep $SLEEP
-#done
+done
 
