@@ -10,7 +10,6 @@ SLEEP_INIT=${SLEEP_INIT:-1s}
 SLEEP=${SLEEP:-10m}
 NAMESPACE=${NAMESPACE:-gitlabstack}
 GITLAB_SERVICE_NAME=${GITLAB_SERVICE_NAME:-$NAMESPACE_gitlab}
-NODE_HOSTNAME=${NODE_HOSTNAME:-$(hostname)}
 DELETE_MTIME=${DELETE_MTIME:-5}
 DELETE_LOG_SIZE=${DELETE_LOG_SIZE:-10}
 BACKUPDIR=""
@@ -89,7 +88,9 @@ delete_old_backups() {
  
 sleep $SLEEP_INIT  #give other container some lead time to start running
 while true; do  #loop infinitely to produce backups or delete old backups every $SLEEP time
-  if [ "$NODE_HOSTNAME" == "$FTP_SERVER" ]; then
+  node_hostname=$(cat /usr/local/data/hostname)
+  node_hostname=${node_hostname:-$(hostname)} #running in test mode with no volume
+  if [ "$node_hostname" == "$FTP_SERVER" ]; then
     delete_old_backups
   else
     create_backups
