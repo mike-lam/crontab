@@ -11,6 +11,7 @@ SLEEP=${SLEEP:-10m}
 DELETE_MTIME=${DELETE_MTIME:-5}
 DELETE_LOG_SIZE=${DELETE_LOG_SIZE:-10}
 BACKUPDIR=""
+BACKUPDIR_EXIST=1;
 
 #these GLOBAL variables are calculated
 setNODE_HOSTNAME() {
@@ -63,15 +64,25 @@ copy_file_to_ftp() { #dir_file_name
   dirN=$(dirname $1)
   fileN=$(basename $1)
   cd $dirN
-  ftp -n -v $FTP_SERVER << EOT
-  passive
-  user $FTP_USER $FTP_PASSWD
-  mkdir $BACKUPDIR
-  cd $BACKUPDIR
-  put $fileN
-  close
+  if [ $BACKUPDIR_EXIST == 0 ];then
+    ftp -n -v $FTP_SERVER << EOT
+      passive
+      user $FTP_USER $FTP_PASSWD
+      cd $BACKUPDIR
+      put $fileN
+      close  
+EOF
+  else 
+    ftp -n -v $FTP_SERVER << EOT
+      passive
+      user $FTP_USER $FTP_PASSWD
+      mkdir $BACKUPDIR
+      cd $BACKUPDIR
+      put $fileN
+      close
 EOT
-}
+  fi
+ }
 
 create_backups() {
   #find all volumes for all running container in this stack on this node and then make a backup of it on the ftp server (which we assume is on a remote vm for safekeeping)
