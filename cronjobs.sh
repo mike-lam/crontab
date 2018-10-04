@@ -1,5 +1,6 @@
 #set -x
 
+
 # these GLOBAL variables should be set in docker-compose.yml file as environment variables, however default values are provided here which makes testing easier to do.
 DOCKER_ROOT_DIR=$(docker system info -f '{{.DockerRootDir}}')
 TMPDIR=${TMPDIR:-/tmp}
