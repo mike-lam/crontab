@@ -1,6 +1,6 @@
 #set -x
 
-# these variables should be set in docker-compose.yml file as environment variables, however default values are provided here which makes testing easier to do.
+# these GLOBAL variables should be set in docker-compose.yml file as environment variables, however default values are provided here which makes testing easier to do.
 DOCKER_ROOT_DIR=$(docker system info -f '{{.DockerRootDir}}')
 TMPDIR=${TMPDIR:-/tmp}
 FTP_SERVER=${FTP_SERVER:-ubuntu-gitlabstack05}
@@ -8,11 +8,31 @@ FTP_USER=${FTP_USER:-vmadmin}
 FTP_PASSWD=${FTP_PASSWD:-Dc5k20a3}
 SLEEP_INIT=${SLEEP_INIT:-1s}
 SLEEP=${SLEEP:-10m}
-NAMESPACE=${NAMESPACE:-gitlabstack}
-GITLAB_SERVICE_NAME=${GITLAB_SERVICE_NAME:-$NAMESPACE_gitlab}
 DELETE_MTIME=${DELETE_MTIME:-5}
 DELETE_LOG_SIZE=${DELETE_LOG_SIZE:-10}
 BACKUPDIR=""
+
+#these GLOBAL variables are calculated
+setNODE_HOSTNAME() {
+  #assumes the container has volume "/etc:/usr/local/data"
+  NODE_HOSTNAME=$(cat /usr/local/data/hostname 2> /dev/null)
+  NODE_HOSTNAME=${node_hostname:-$(hostname)} #running in test mode with no volume
+}
+
+setSTACK_NAMESPACE() {
+  STACK_NAMESPACE=$(docker inspect --format '{{index .Config.Labels "com.docker.stack.namespace"}}' $(hostname) 2> /dev/null)
+  if [ "$?" != "0" ]; then
+    STACK_NAMESPACE="gitlabstack" #for testing outside containers 
+  fi
+}
+
+setGITLAB_SERVICE_NAME() {
+  GITLAB_SERVICE_NAME=${GITLAB_SERVICE_NAME:-$STACK_NAMESPACE_gitlab} 
+}
+
+setNODE_HOSTNAME
+setSTACK_NAMESPACE
+setGITLAB_SERVICE_NAME
 
 backup_gitlab_data_volume() {
   #it is not needed to backup everything in the data volume, gitlab provide a function to perform this, so we just ftp what it produces
@@ -88,13 +108,10 @@ delete_old_backups() {
  
 sleep $SLEEP_INIT  #give other container some lead time to start running
 while true; do  #loop infinitely to produce backups or delete old backups every $SLEEP time
-  node_hostname=$(cat /usr/local/data/hostname)
-  node_hostname=${node_hostname:-$(hostname)} #running in test mode with no volume
-  if [ "$node_hostname" == "$FTP_SERVER" ]; then
+  if [ "$NODE_HOSTNAME" == "$FTP_SERVER" ]; then
     delete_old_backups
   else
     create_backups
   fi
   sleep $SLEEP
 done
-
