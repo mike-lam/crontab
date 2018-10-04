@@ -81,7 +81,7 @@ delete_old_backups() {
   cp $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/cron.log $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/crontmp.log
   echo "Started delete_old_backups on $(hostname) at $(date)"  2>&1 | tee  $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/crontmp.log
   find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/ -mtime +$DELETE_MTIME 2>&1 | tee -a $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/crontmp.log
-  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/ -mtime +$DELETE_MTIME -exec rm {} \;
+  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/ -mtime +$DELETE_MTIME -exec rm -r {} \;
   echo "DONE with delete_old_backups at $(date)!"  2>&1 | tee -a $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/crontmp.log
   tail -n $DELETE_LOG_SIZE  $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/crontmp.log >  $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/cron.log
 }
