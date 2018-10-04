@@ -80,8 +80,8 @@ delete_old_backups() {
   #delete backup dirs older then $DELETE_MTIME, also keep only last $DELETE_LOG_SIZE lines of delete logs
   cp $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER/cron.log $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER/crontmp.log
   echo "Started delete_old_backups on $(hostname) at $(date)"  2>&1 | tee  $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER/crontmp.log
-  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER -mtime +$DELETE_MTIME -exec rm -r {} \; 2>&1 | tee -a $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER/crontmp.log
-#  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER -mtime +$DELETE_MTIME -exec rm -r {} \;
+  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER -mtime +$DELETE_MTIME  2>&1 | tee -a $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER/crontmp.log
+  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER -mtime +$DELETE_MTIME -exec rm -r {} \;
   echo "DONE with delete_old_backups at $(date)!"  2>&1 | tee -a $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER/crontmp.log
   tail -n $DELETE_LOG_SIZE  $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER/crontmp.log >  $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/$FTP_USER/cron.log
 }
