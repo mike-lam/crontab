@@ -55,7 +55,7 @@ EOT
 create_backups() {
   #find all volumes for all running container in this stack on this node and then make a backup of it on the ftp server (which we assume is on a remote vm for safekeeping)
   BACKUPDIR=$(hostname).$(date +%Y-%m-%d_%H_%M_%S-%Z)
-  echo "Started on $(hostname) at $(date)"  2>&1 | tee  /var/log/cron.log
+  echo "Started create_backups on $(hostname) at $(date)"  2>&1 | tee  /var/log/cron.log
   for volume in $(docker volume ls -q); do
     namespace=$(docker volume inspect $volume --format '{{index .Labels "com.docker.stack.namespace"}}')
     if [ "$namespace" == "$NAMESPACE" ]; then
@@ -75,9 +75,13 @@ create_backups() {
 }
 
 delete_old_backups() {
-  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/ -mtime +5 2>&1 | tee /var/log/cron.log
-  # find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/ -mtime +5 -exec rm {} \;
-
+  #delete backup dirs older then $DELETE_MTIME, also keep only last $DELETE_LOG_SIZE lines of delete logs
+  cp $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/cron.log $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/crontmp.log
+  echo "Started delete_old_backups on $(hostname) at $(date)"  2>&1 | tee  $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/crontmp.log
+  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/ -mtime +$DELETE_MTIME 2>&1 | tee -a $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/crontmp.log
+  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/ -mtime +$DELETE_MTIME -exec rm {} \;
+  echo "DONE with delete_old_backups at $(date)!"  2>&1 | tee -a $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/crontmp.log
+  tail -n $DELETE_LOG_SIZE  $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/crontmp.log >  $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/cron.log
 }
  
 sleep $SLEEP_INIT  #give other container some lead time to start running
