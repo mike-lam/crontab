@@ -75,9 +75,11 @@ create_backups() {
 }
 
 delete_old_backups() {
-  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/ -mtime +5 
-}
+  find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/ -mtime +5 2>&1 | tee /var/log/cron.log
+  # find $DOCKER_ROOT_DIR/volumes/"$NAMESPACE"_ftp/_data/ -mtime +5 -exec rm {} \;
 
+}
+ 
 sleep $SLEEP_INIT  #give other container some lead time to start running
 while true; do  #loop infinitely to produce backups or delete old backups every $SLEEP time
   if [ "$NODE_HOSTNAME" == "$FTP_SERVER" ]; then
