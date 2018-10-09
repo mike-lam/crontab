@@ -20,6 +20,7 @@ setNODE_HOSTNAME() {
   NODE_HOSTNAME=$(cat /usr/local/data/hostname 2> /dev/null)
   NODE_HOSTNAME=${node_hostname:-$(hostname)} #running in test mode with no volume
 }
+setNODE_HOSTNAME
 
 setSTACK_NAMESPACE() {
   STACK_NAMESPACE=$(docker inspect --format '{{index .Config.Labels "com.docker.stack.namespace"}}' $(hostname) 2> /dev/null)
@@ -27,14 +28,72 @@ setSTACK_NAMESPACE() {
     STACK_NAMESPACE="gitlabstack" #for testing outside containers 
   fi
 }
+setSTACK_NAMESPACE
 
 setGITLAB_SERVICE_NAME() {
   GITLAB_SERVICE_NAME=${GITLAB_SERVICE_NAME:-$STACK_NAMESPACE_gitlab} 
 }
-
-setNODE_HOSTNAME
-setSTACK_NAMESPACE
 setGITLAB_SERVICE_NAME
+
+#--------------------
+setCONTAINERS(){
+  #running containers for this namespace on this node
+  CONTAINERS=$(docker ps --filter name="$STACK_NAMESPACE_" -q)
+}
+
+setCONTAINER_VOLUMES() { #$1 
+  local ps=$1
+  local len=$(docker inspect $ps --format "{{(len .Mounts)}}")
+  local c=0
+  local fmt=""
+  local inspect=""
+  while [ $c -lt $len ]; do 
+    fmt="{{(index .Mounts $c).Type}} {{(index .Mounts $c).Destination}} {{(index .Mounts $c).Name}} $fmt" #map sequence not garanted over multiple calls
+    let c=$c+1
+  done
+  inspect=($(docker inspect $ps --format "$fmt"))
+  len=${#inspect[@]}
+  local c=0
+  while [ $c -lt $len ]; do 
+    item=${inspect[$c]}    
+    if [ "$item" == "volume" ]; then
+      let c=$c+1
+      local volumeDest=${inspect[$c]}
+      let c=$c+1
+      local volumeName=${inspect[$c]}
+echo "$volumeName:$volumeDest"
+    fi
+    let c=$c+1 
+  done
+}
+
+setCONTAINER_VOLUMES001() { #$1 
+  local ps=$1
+  local len=$(docker inspect $ps --format "{{(len .Mounts)}}")
+  local c=0
+  CONTAINER_VOLUMES_DESTINATION=""
+  CONTAINER_VOLUMES_NAME=""
+  while [ $c -lt $len ]; do
+    inspect=$(docker inspect $ps --format "{{(index .Mounts $c).Type}} {{(index .Mounts $c).Destination}} {{(index .Mounts $c).Name}}") #map sequence not garanted over multiple calls
+    inspect=($inspect)
+    type=${inspect[0]}
+    if [ "$type" == "volume" ]; then
+set -x
+      CONTAINER_VOLUMES_DESTINATION="${inspect[1]} $CONTAINER_VOLUMES_DESTINATION"
+      CONTAINER_VOLUMES_NAME="${inspect[2]} $CONTAINER_VOLUMES_NAME"
+set +x
+    fi
+    let c=$c+1
+  done
+echo $CONTAINER_VOLUMES_DESTINATION
+echo $CONTAINER_VOLUMES_NAME
+
+  CONTAINER_VOLUMES_DESTINATION=($CONTAINER_VOLUMES_DESTINATION)
+  CONTAINER_VOLUMES_NAME=($CONTAINER_VOLUMES_NAME)
+echo $CONTAINER_VOLUMES_DESTINATION
+echo $CONTAINER_VOLUMES_NAME
+echo "."
+}
 
 backup_gitlab_data_volume() {
   #it is not needed to backup everything in the data volume, gitlab provide a function to perform this, so we just ftp what it produces
@@ -50,16 +109,17 @@ backup_gitlab_data_volume() {
  
 backup_volume() {
   #tar the content of the volume and ftp it
-  tmpdir=$(mktemp -d $TMPDIR/$volume.XXXXXXXXXX)
-  tarfile=$TMPDIR/$volume.tar
-  echo "  $tarfile"  2>&1 | tee -a /var/log/cron.log 
-  cp -r $DOCKER_ROOT_DIR/volumes/$volume/_data/* $tmpdir      
+  tmpdir=$(mktemp -d $TMPDIR/$volumeName.XXXXXXXXX)
+  tarfile=$TMPDIR/$volumeName.tar
+  echo "  $tarfile"  2>&1 | tee -a /var/log/cron.log
+echo "DEBUG $container:$volumeDest:$volumeName"
+  docker cp $container:$volumeDest $tmpdir
   tar -czf $tarfile $tmpdir
   copy_file_to_ftp $tarfile
   #cleanup
-  rm -r $tmpdir      
-  rm $tarfile 
-} 
+  rm -r $tmpdir
+  rm $tarfile
+}
 
 copy_file_to_ftp() { #dir_file_name
   dirN=$(dirname $1)
@@ -84,24 +144,41 @@ EOF
 EOT
   fi
  }
-
+  
 create_backups() {
-  #find all volumes for all running container in this stack on this node and then make a backup of it on the ftp server (which we assume is on a remote vm for safekeeping)
   BACKUPDIR=$(hostname).$(date +%Y-%m-%d_%H_%M_%S-%Z)
   echo "Started create_backups on $(hostname) at $(date)"  2>&1 | tee  /var/log/cron.log
-  for volume in $(docker volume ls --filter name="$STACK_NAMESPACE_" -q); do
-    c=$(docker ps --filter volume=$volume -q|wc -l)    
-    if [ $c -eq  1 ]; then
-      if [ $volume == "$GITLAB_SERVICE_NAME-data" ]; then
-        backup_gitlab_data_volume
-      else 
-        backup_volume
-      fi
-    fi
+  setCONTAINERS
+  for container in $CONTAINERS; do
+    setCONTAINER_VOLUMES $container
+echo  $CONTAINER_VOLUMES_NAME
+    for volumeName in $CONTAINER_VOLUMES_NAME; do
+      echo "$volumeName"
+    done
   done
+
+
+
+#  local c=0
+#  ;mxfc;. volumeName
+#  while [ $c -lt $len ]; do
+#    inspect=($(docker inspect $ps --format " {{(index .Mounts $c).Type}} {{(index .Mounts $c).Destination}} {{(index .Mounts $c).Name}}  ")) #map sequence not garanted over multiple calls
+#    type=${inspect[0]}
+#    if [ "$type" == "volume" ]; then
+#      CONTAINER_VOLUMES_DESTINATION="$CONTAINER_VOLUMES_DESTINATION ${inspect[1]}"
+#      CONTAINER_VOLUMES_NAME="$CONTAINER_VOLUMES_NAME ${inspect[2]}"
+#    fi
+#    let c=$c+1
+#      if [ $volumeDest == "/var/opt/dest" ]; then
+#echo        backup_gitlab_data_volume
+#      else
+#echo "$volumeName:$volumeDest"
+##        backup_volume
+#      fi
+#  done
   echo "DONE with backups at $(date)!"  2>&1 | tee -a /var/log/cron.log  #althought the backups are truly done when the ftp of the log is done, we need to log before we ftp or lose the echo
-  copy_file_to_ftp /var/log/cron.log
-  rm /var/log/cron.log
+#  copy_file_to_ftp /var/log/cron.log
+#  rm /var/log/cron.log
 }
 
 delete_old_backups() {
@@ -114,7 +191,7 @@ delete_old_backups() {
   rm $DOCKER_ROOT_DIR/volumes/"$STACK_NAMESPACE"_ftp/_data/$FTP_USER/crontmp.log
 }
  
-sleep $SLEEP_INIT  #give other container some lead time to start running
+sleep 1s #$SLEEP_INIT  #give other container some lead time to start running
 while true; do  #loop infinitely to produce backups or delete old backups every $SLEEP time
   if [ "$NODE_HOSTNAME" == "$FTP_SERVER" ]; then
     delete_old_backups
