@@ -1,4 +1,5 @@
 FROM docker:latest
+RUN apk add --no-cache bash
 
 COPY cronjobs.sh /usr/local/bin/cronjobs.sh
 
