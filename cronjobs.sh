@@ -56,20 +56,18 @@ setCONTAINER_VOLUMES() { #$1
   inspect=($(docker inspect $ps --format "$fmt"))
   len=${#inspect[@]}
   c=0
-  while [ $c -lt $len ]; do 
+  while [ $c -lt $len ]; do
     local item=${inspect[$c]}    
     if [ "$item" == "volume" ]; then
       let c=$c+1
       local volumeDest=${inspect[$c]}
       let c=$c+1
       local volumeName=${inspect[$c]}
-      CONTAINER_VOLUMES_destinations+=($volumeDest)
-      CONTAINER_VOLUMES_names+=($volumName)
+      CONTAINER_VOLUMES_destinations+=$volumeDest
+      CONTAINER_VOLUMES_names+=$volumeName
     fi
     let c=$c+1 
   done
-echo $CONTAINER_VOLUMES_destinations
-echo $CONTAINER_VOLUMES_names
 }
 
 setCONTAINER_VOLUMES001() { #$1 
@@ -83,20 +81,13 @@ setCONTAINER_VOLUMES001() { #$1
     inspect=($inspect)
     type=${inspect[0]}
     if [ "$type" == "volume" ]; then
-set -x
       CONTAINER_VOLUMES_DESTINATION="${inspect[1]} $CONTAINER_VOLUMES_DESTINATION"
       CONTAINER_VOLUMES_NAME="${inspect[2]} $CONTAINER_VOLUMES_NAME"
-set +x
     fi
     let c=$c+1
   done
-echo $CONTAINER_VOLUMES_DESTINATION
-echo $CONTAINER_VOLUMES_NAME
-
-  CONTAINER_VOLUMES_DESTINATION=($CONTAINER_VOLUMES_DESTINATION)
-  CONTAINER_VOLUMES_NAME=($CONTAINER_VOLUMES_NAME)
-echo $CONTAINER_VOLUMES_DESTINATION
-echo $CONTAINER_VOLUMES_NAME
+echo ${CONTAINER_VOLUMES_DESTINATION[@]}
+echo ${CONTAINER_VOLUMES_NAME[@]}
 echo "."
 }
 
@@ -196,9 +187,6 @@ delete_old_backups() {
   rm $DOCKER_ROOT_DIR/volumes/"$STACK_NAMESPACE"_ftp/_data/$FTP_USER/crontmp.log
 }
 
-while true; do
-  sleep 9999s
-done
  
 sleep 1s #$SLEEP_INIT  #give other container some lead time to start running
 while true; do  #loop infinitely to produce backups or delete old backups every $SLEEP time
