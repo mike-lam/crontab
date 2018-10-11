@@ -1,8 +1,8 @@
 #set -x
-while true; do  #loop infinitely to produce backups or delete old backups every $SLEEP time
-  sleep 9999
-  echo "delete the loop DEBUG"
-done
+#while true; do  #loop infinitely to produce backups or delete old backups every $SLEEP time
+#  sleep 9999
+#  echo "delete the loop DEBUG"
+#done
 
 
 # these GLOBAL variables should be set in docker-compose.yml file as environment variables, however default values are provided here which makes testing easier to do.
@@ -21,7 +21,7 @@ BACKUPDIR=""
 setNODE_HOSTNAME() {
   #assumes the container has volume "/etc:/usr/local/data"
   NODE_HOSTNAME=$(cat /usr/local/data/hostname 2> /dev/null)
-  NODE_HOSTNAME=${node_hostname:-$(hostname)} #running in test mode with no volume
+  NODE_HOSTNAME=${NODE_HOSTNAME:-$(hostname)} #running in test mode with no volume
 }
 setNODE_HOSTNAME
 
@@ -92,21 +92,19 @@ backup_volume() {
   local volumeDest=$3
   local tmpdir=$(mktemp -d $TMPDIR/$volumeName.XXXXXXXXX)
   local tarfile=$TMPDIR/$volumeName.tgz
-  echo "  $tarfile"  2>&1 | tee -a /var/log/cron.log
+  echo "  $(basename $tarfile)"  2>&1 | tee -a /var/log/cron.log
   docker cp $container:$volumeDest $tmpdir
-  pushd $tmpdir
+  pushd $tmpdir > /dev/null
   tar -czf $tarfile .
   copy_file_to_ftp $tarfile
-  popd
+  popd > /dev/null
   #cleanup
   rm -r $tmpdir
   rm $tarfile
 }
 
-make_dir_in_ftp() { 
-  ftp -n -v $FTP_SERVER << EOT
-    passive
-    user $FTP_USER $FTP_PASSWD
+make_dir_in_ftp() {
+  lftp $FTP_SERVER -u $FTP_USER,$FTP_PASSWD << EOT
     mkdir $BACKUPDIR
     close
 EOT
@@ -115,19 +113,18 @@ EOT
 copy_file_to_ftp() { #dir_file_name
   dirN=$(dirname $1)
   fileN=$(basename $1)
-  pushd $dirN
-  ftp -n -v $FTP_SERVER << EOT
-    passive
+  pushd $dirN > /dev/null
+  lftp $FTP_SERVER -u $FTP_USER,$FTP_PASSWD << EOT
     user $FTP_USER $FTP_PASSWD
     cd $BACKUPDIR
     put $fileN
     close  
 EOT
-  popd
+  popd > /dev/null
  }
   
 create_backups() {
-  BACKUPDIR=$(hostname).$(date +%Y-%m-%d_%H_%M_%S-%Z)
+  BACKUPDIR=$NODE_HOSTNAME.$(date +%Y-%m-%d_%H_%M_%S-%Z)
   make_dir_in_ftp
   echo "Started create_backups on $(hostname) at $(date)"  2>&1 | tee  /var/log/cron.log
   setCONTAINERS
@@ -146,7 +143,6 @@ echo   "     backup_gitlab_data_volume"
   done
   echo "DONE with backups at $(date)!"  2>&1 | tee -a /var/log/cron.log  #althought the backups are truly done when the ftp of the log is done, we need to log before we ftp or lose the echo
   copy_file_to_ftp /var/log/cron.log
-cat /var/log/cron.log
   rm /var/log/cron.log
 }
 
