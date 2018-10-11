@@ -18,12 +18,10 @@ DELETE_LOG_SIZE=${DELETE_LOG_SIZE:-10}
 BACKUPDIR=""
 
 #these GLOBAL variables are calculated
-setNODE_HOSTNAME() {
-  #assumes the container has volume "/etc:/usr/local/data"
-  NODE_HOSTNAME=$(cat /usr/local/data/hostname 2> /dev/null)
-  NODE_HOSTNAME=${NODE_HOSTNAME:-$(hostname)} #running in test mode with no volume
+setNODE_IP() {
+  NODE_IP=$(docker info --format '{{.Swarm.NodeAddr}}')
 }
-setNODE_HOSTNAME
+setNODE_IP
 
 setSTACK_NAMESPACE() {
   STACK_NAMESPACE=$(docker inspect --format '{{index .Config.Labels "com.docker.stack.namespace"}}' $(hostname) 2> /dev/null)
@@ -75,13 +73,19 @@ setCONTAINER_VOLUMES() { #$1
 
 backup_gitlab_data_volume() {
   #it is not needed to backup everything in the data volume, gitlab provide a function to perform this, so we just ftp what it produces
-  gitlab_container_id=$(docker ps -f name=$GITLAB_SERVICE_NAME -q)
-  docker exec -t $gitlab_container_id gitlab-rake gitlab:backup:create 2>&1 | tee -a /var/log/cron.log #the tee is to duplicate the outs to a file for loggin
-  gitlab_data_volume=$DOCKER_ROOT_DIR/volumes/$GITLAB_SERVICE_NAME-data/_data
-  tarfile=$(ls $gitlab_data_volume/backups/*)
-  tarfileNew=$TMPDIR/$GITLAB_SERVICE_NAME-data.tar
-  mv  $tarfile $tarfileNew 
+  local container=$1
+  local volumeName=$2
+  local volumeDest=$3
+  local tmpdir=$(mktemp -d $TMPDIR/$volumeName.XXXXXXXXX)
+  local  tarfileNew=$TMPDIR/$volumeName.tar
+  echo "  $volumeName.tar"  2>&1 | tee -a /var/log/cron.log  
+  docker exec -t $container gitlab-rake gitlab:backup:create 2>&1 | tee -a /var/log/cron.log #the tee is to duplicate the outs to a file for loggin
+  docker cp $container:$volumeDest/backups $tmpdir   
+  local tmpNames=($(ls -1 $tmpdir/backups|sort -r))
+  local tarfile="$tmpdir/backups/${tmpNames[0]}"
+  mv  $tarfile $tarfileNew   
   copy_file_to_ftp $tarfileNew
+  rm -rf $tmpdir
   rm $tarfileNew
 } 
  
@@ -124,7 +128,7 @@ EOT
  }
   
 create_backups() {
-  BACKUPDIR=$NODE_HOSTNAME.$(date +%Y-%m-%d_%H_%M_%S-%Z)
+  BACKUPDIR=$NODE_IP.$(date +%Y-%m-%d_%H_%M_%S-%Z)
   make_dir_in_ftp
   echo "Started create_backups on $(hostname) at $(date)"  2>&1 | tee  /var/log/cron.log
   setCONTAINERS
@@ -133,8 +137,8 @@ create_backups() {
     local c=0
     for volumeDest in "${CONTAINER_VOLUMES_destinations[@]}"; do
       local  volumeName=${CONTAINER_VOLUMES_names[$c]}
-      if [ $volumeDest == "/var/opt/dest" ]; then
-echo   "     backup_gitlab_data_volume"
+      if [ $volumeDest == "/var/opt/gitlab" ]; then
+        backup_gitlab_data_volume $container $volumeName $volumeDest
       else
         backup_volume $container $volumeName $volumeDest
       fi
@@ -159,7 +163,7 @@ delete_old_backups() {
  
 sleep 1s #$SLEEP_INIT  #give other container some lead time to start running
 while true; do  #loop infinitely to produce backups or delete old backups every $SLEEP time
-  if [ "$NODE_HOSTNAME" == "$FTP_SERVER" ]; then
+  if [ "$NODE_IP" == "$FTP_SERVER" ]; then
     delete_old_backups
   else
     create_backups
