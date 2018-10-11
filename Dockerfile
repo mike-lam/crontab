@@ -1,5 +1,5 @@
 FROM docker:latest
-RUN apk add --no-cache bash
+RUN apk add --no-cache bash lftp
 
 COPY cronjobs.sh /usr/local/bin/cronjobs.sh
 
